@@ -1,17 +1,22 @@
 #!/usr/bin/env python3
 """
-bindings2lisp.py — Generate CFFI Lisp bindings and a C shim file from nuklear_api.json.
+bindings2lisp.py — Generate CFFI (SBCL) + ECL FFI Lisp bindings from nuklear_api.json.
+
+Uses reader conditionals (#-ecl / #+ecl) so the same files work on both:
+  - CFFI path: cffi:defcfun + cffi:defcstruct + cffi:defcenum (struct-by-value via C shims)
+  - ECL path:  ffi:def-function + ffi:def-c-struct + defconstant (struct-by-value native)
 
 Usage:
     python bindings2lisp.py nuklear_api.json <project-root>
 
 Writes into <project-root>:
-    package.lisp       — defpackage
-    enums.lisp         — defcenum for each nk enum
-    structs.lisp       — defcstruct / defcunion for each nk struct
-    functions.lisp     — defcfun for each nk function
-    nuklear_shims.c      — thin C wrappers for struct-by-value functions
-    cl-nuklear.asd         — ASDF system definition
+    package.lisp        — defpackage with reader conditional
+    library.lisp        — foreign library loading (CFFI/ECL)
+    enums.lisp          — defcenum (#-ecl) / defconstant (#+ecl) for each nk enum
+    structs.lisp        — defcstruct / defcunion (#-ecl) / ffi:def-c-struct (#+ecl)
+    functions.lisp      — defcfun (#-ecl) / ffi:def-function (#+ecl) for each nk function
+    nuklear_shims.c     — thin C wrappers for struct-by-value (CFFI-only, #-ecl)
+    cl-nuklear.asd      — ASDF system definition
 """
 
 import sys
@@ -21,6 +26,22 @@ from pathlib import Path
 
 PRIMITIVE_MAP = {
     "bool":               ":bool",
+    "char":               ":char",
+    "unsigned char":      ":unsigned-char",
+    "short":              ":short",
+    "unsigned short":     ":unsigned-short",
+    "int":                ":int",
+    "unsigned int":       ":unsigned-int",
+    "long":               ":long",
+    "unsigned long":      ":unsigned-long",
+    "long long":          ":long-long",
+    "unsigned long long": ":unsigned-long-long",
+    "float":              ":float",
+    "double":             ":double",
+}
+
+ECL_PRIMITIVE_MAP = {
+    "bool":               ":int",
     "char":               ":char",
     "unsigned char":      ":unsigned-char",
     "short":              ":short",
@@ -92,6 +113,48 @@ def type_to_cffi(ty: dict, tdmap: dict, depth: int = 0) -> str:
     return ":pointer"
 
 
+def type_to_ecl(ty: dict, tdmap: dict, depth: int = 0) -> str:
+    """Return an ECL FFI type expression string for the given type JSON node."""
+    if depth > 6:
+        return ":pointer"
+
+    kind = ty.get("kind")
+
+    if kind == "void":
+        return ":void"
+
+    if kind == "primitive":
+        return ECL_PRIMITIVE_MAP.get(ty["name"], ":int")
+
+    if kind == "pointer":
+        return ":pointer"
+
+    if kind == "record":
+        return f"(:struct {c2l(ty['name'])})"
+
+    if kind == "enum":
+        return ":int"
+
+    if kind == "typedef":
+        td_name = ty["name"]
+        if ty.get("canonical_kind") == "record":
+            struct_name = c2l(ty.get("canonical_name") or td_name)
+            return f"(:struct {struct_name})"
+        if td_name in tdmap:
+            return type_to_ecl(tdmap[td_name], tdmap, depth + 1)
+        if "canonical" in ty:
+            return type_to_ecl(ty["canonical"], tdmap, depth + 1)
+        return ":int"
+
+    if kind == "array":
+        return ":pointer"
+
+    if kind in ("function_pointer", "unknown", "opaque"):
+        return ":pointer"
+
+    return ":pointer"
+
+
 # ---------------------------------------------------------------------------
 # C shim helpers
 # ---------------------------------------------------------------------------
@@ -142,8 +205,14 @@ def struct_type_name(ty: dict) -> str:
 
 def gen_package() -> str:
     return """\
+#-ecl
 (defpackage :nuklear
   (:use :cl :cffi)
+  (:nicknames :nk))
+
+#+ecl
+(defpackage :nuklear
+  (:use :cl :ffi)
   (:nicknames :nk))
 
 (in-package :nuklear)
@@ -161,9 +230,20 @@ def gen_enums(api: dict) -> str:
             lines.append("")
             continue
         lisp_name = c2l(raw_name)
+
+        # CFFI path — defcenum with keyword values
+        lines.append(f"; {raw_name}")
+        lines.append("#-ecl")
         lines.append(f"(cffi:defcenum {lisp_name}")
         for c in enum["constants"]:
             lines.append(f"  (:{c2l(c['name']).lower()} {c['value']})")
+        lines.append(")")
+
+        # ECL path — defconstant for each value
+        lines.append("#+ecl")
+        lines.append("(eval-when (:compile-toplevel :load-toplevel :execute)")
+        for c in enum["constants"]:
+            lines.append(f"  (defconstant {c2l(c['name']).lower()} {c['value']})")
         lines.append(")")
         lines.append("")
     return "\n".join(lines)
@@ -174,7 +254,11 @@ def gen_structs(api: dict) -> str:
     lines = ["(in-package :nuklear)", "", ";;; Structure definitions", ""]
     for struct in api["structs"]:
         lisp_name = c2l(struct["name"])
+
+        # CFFI path
         cffi_form = "cffi:defcunion" if "union" in struct.get("kind", "") else "cffi:defcstruct"
+        lines.append(f"; {struct['name']}")
+        lines.append("#-ecl")
         lines.append(f"({cffi_form} {lisp_name}")
         for field in struct["fields"]:
             fname = c2l(field["name"]) if field["name"] else "padding"
@@ -184,6 +268,16 @@ def gen_structs(api: dict) -> str:
                 lines.append(f"  ({fname} {ftype} :count {bw})")
             else:
                 lines.append(f"  ({fname} {ftype})")
+        lines.append(")")
+
+        # ECL path
+        ecl_form = "ffi:def-c-union" if "union" in struct.get("kind", "") else "ffi:def-c-struct"
+        lines.append("#+ecl")
+        lines.append(f"({ecl_form} {lisp_name}")
+        for field in struct["fields"]:
+            fname = c2l(field["name"]) if field["name"] else "padding"
+            ftype = type_to_ecl(field["type"], tdmap)
+            lines.append(f"    ({fname} {ftype})")
         lines.append(")")
         lines.append("")
     return "\n".join(lines)
@@ -195,8 +289,8 @@ def gen_functions(api: dict) -> str:
         "(in-package :nuklear)",
         "",
         ";;; Function bindings.",
-        ";;; Functions marked [SHIM] delegate to a generated C wrapper (nuklear_shims.c)",
-        ";;; that converts struct-by-value arguments/returns to pointer arguments.",
+        ";;; CFFI path (#-ecl): struct-by-value handled via C shims (nuklear_shims.c).",
+        ";;; ECL path   (#+ecl): native ffi:def-function handles struct-by-value directly.",
         "",
     ]
     for fn in api["functions"]:
@@ -213,14 +307,16 @@ def gen_functions(api: dict) -> str:
         sbv_params = set(fn["struct_by_value_params"])
         sbv_return = fn["struct_by_value_return"]
 
+        # ----- CFFI path (#-ecl) -----
+        lines.append(f"; {name}")
+        lines.append("#-ecl")
         if needs_shim:
             shim_c_name = f"cl_{name}"
-            lines.append(f"; [SHIM] {name} — struct-by-value args/return replaced with pointers")
-            # Shim return: void if original returned struct (output written via last arg)
+            lines.append(f"; [SHIM] {name} — struct-by-value replaced with pointers")
             ret_cffi = ":void" if sbv_return else type_to_cffi(fn["return_type"], tdmap)
             lines.append(f'(cffi:defcfun ("{shim_c_name}" {lisp_name}) {ret_cffi}')
             for i, p in enumerate(fn["params"]):
-                pname = c2l(p["name"])
+                pname = c2l(p["name"]) or f"arg{i}"
                 ptype = ":pointer" if i in sbv_params else type_to_cffi(p["type"], tdmap)
                 lines.append(f"  ({pname} {ptype})")
             if sbv_return:
@@ -230,10 +326,24 @@ def gen_functions(api: dict) -> str:
             ret_cffi = type_to_cffi(fn["return_type"], tdmap)
             lines.append(f'(cffi:defcfun ("{name}" {lisp_name}) {ret_cffi}')
             for p in fn["params"]:
-                pname = c2l(p["name"])
+                pname = c2l(p["name"]) or "arg"
                 ptype = type_to_cffi(p["type"], tdmap)
                 lines.append(f"  ({pname} {ptype})")
             lines.append(")")
+
+        # ----- ECL path (#+ecl) — no shims, struct-by-value handled natively -----
+        lines.append("#+ecl")
+        lines.append(f'(ffi:def-function ("{name}" {lisp_name})')
+        lines.append("    (")
+        for i, p in enumerate(fn["params"]):
+            pname = c2l(p["name"]) or f"arg{i}"
+            ptype = type_to_ecl(p["type"], tdmap)
+            lines.append(f"     ({pname} {ptype})")
+        lines.append("    )")
+        ret_ecl = type_to_ecl(fn["return_type"], tdmap)
+        if ret_ecl != ":void":
+            lines.append(f"  :returning {ret_ecl}")
+        lines.append(")")
 
         lines.append("")
     return "\n".join(lines)
@@ -304,23 +414,53 @@ def gen_shims_c(api: dict) -> str:
     return "\n".join(lines)
 
 
+def gen_library() -> str:
+    return """\
+(in-package :nuklear)
+
+;;; Foreign library definition.
+;;; Build the shared library first:  make lib
+;;; The bundled directory is pushed onto cffi:*foreign-library-directories*
+;;; at load time so cffi:use-foreign-library finds it automatically.
+
+#-ecl
+(progn
+  (cffi:define-foreign-library libnuklear
+    (:darwin "libnuklear.dylib")
+    (:unix   "libnuklear.so")
+    (t       (:default "libnuklear")))
+
+  (eval-when (:load-toplevel :execute)
+    (let ((bundled (asdf:system-relative-pathname :cl-nuklear "")))
+      (when (probe-file bundled)
+        (pushnew (truename bundled) cffi:*foreign-library-directories* :test #'equal))))
+
+  (cffi:use-foreign-library libnuklear))
+
+#+ecl
+(eval-when (:load-toplevel :execute)
+  ;; ECL: load the shared library via native FFI.
+  ;; Adjust the filename/extension for your platform as needed.
+  (ffi:load-foreign-library "libnuklear.dylib"))
+"""
+
+
 def gen_asd() -> str:
     return """\
 (asdf:defsystem "cl-nuklear"
-  :description "CFFI bindings for the Nuklear immediate-mode GUI library"
+  :description "CFFI/ECL bindings for the Nuklear immediate-mode GUI library"
   :version "0.1.0"
   :license "MIT"
-  :depends-on (:cffi)
+  :depends-on (#-ecl :cffi)
   :serial t
-  :components
-  ((:module "src"
-    :components
-    ((:file "package")
-     (:file "library")    ; static — loads libnuklear shared lib
-     (:file "enums")
-     (:file "structs")
-     (:file "functions")
-     (:file "variadic"))))) ; static — Lisp wrappers for printf-style functions
+  :components ((:file "package")
+               (:file "library")    ; static — loads libnuklear shared lib
+               (:file "enums")
+               (:file "structs")
+               (:file "functions")
+               (:file "variadic")   ; static — Lisp wrappers for printf-style functions
+               (:file "exports")    ; static — exports all home symbols from the nuklear package
+               (:file "wrapper")))  ; static — ergonomic with-* lifecycle macros
 """
 
 
@@ -340,16 +480,16 @@ def main():
 
     api = json.loads(api_path.read_text())
 
-    (root / "src").mkdir(exist_ok=True)
     (root / "c").mkdir(exist_ok=True)
 
     outputs = {
-        root / "src" / "package.lisp":  gen_package(),
-        root / "src" / "enums.lisp":    gen_enums(api),
-        root / "src" / "structs.lisp":  gen_structs(api),
-        root / "src" / "functions.lisp": gen_functions(api),
+        root / "package.lisp":    gen_package(),
+        root / "library.lisp":    gen_library(),
+        root / "enums.lisp":      gen_enums(api),
+        root / "structs.lisp":    gen_structs(api),
+        root / "functions.lisp":  gen_functions(api),
         root / "c" / "nuklear_shims.c": gen_shims_c(api),
-        root / "cl-nuklear.asd":         gen_asd(),
+        root / "cl-nuklear.asd":  gen_asd(),
     }
 
     for path, content in outputs.items():
