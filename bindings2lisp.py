@@ -56,10 +56,34 @@ ECL_PRIMITIVE_MAP = {
     "double":             ":double",
 }
 
+# Populated by main() from api["structs"] before any gen_* function runs: the C
+# names (not yet hyphenated) of every top-level union. "record" type nodes and
+# typedefs canonicalizing to a record don't distinguish struct vs union, so
+# by-value/by-reference type spellings ((:struct X) vs (:union X) for CFFI,
+# "struct X" vs "union X" for the C shim) must consult this set instead of
+# assuming struct. See weasel #85.
+UNION_NAMES: set = set()
+
 
 def c2l(name: str) -> str:
     """Convert C snake_case identifier to Lisp hyphenated.  nk_foo_bar -> nk-foo-bar"""
     return name.replace("_", "-")
+
+
+# CL symbols that are reserved constants/keywords and cannot be bound as an
+# ordinary lambda-list variable (e.g. C params literally named "t", as in
+# nk_nine_slice_handle's l/t/r/b). c2l() only hyphenates — callers that use
+# its result as a parameter name (not a type or field name) must run it
+# through this guard too. See weasel #85.
+_RESERVED_PARAM_NAMES = {"t", "nil"}
+
+
+def safe_param_name(name: str) -> str:
+    """c2l(name), suffixed with -arg if it collides with a reserved CL symbol."""
+    lisp_name = c2l(name)
+    if lisp_name.lower() in _RESERVED_PARAM_NAMES:
+        return f"{lisp_name}-arg"
+    return lisp_name
 
 
 def type_to_cffi(ty: dict, tdmap: dict, depth: int = 0) -> str:
@@ -79,18 +103,21 @@ def type_to_cffi(ty: dict, tdmap: dict, depth: int = 0) -> str:
         return ":pointer"
 
     if kind == "record":
-        # Struct by value — CFFI (:struct ...) form
-        return f"(:struct {c2l(ty['name'])})"
+        # Struct/union by value — CFFI (:struct ...) or (:union ...) form
+        kw = "union" if ty["name"] in UNION_NAMES else "struct"
+        return f"(:{kw} {c2l(ty['name'])})"
 
     if kind == "enum":
         return c2l(ty["name"])
 
     if kind == "typedef":
         td_name = ty["name"]
-        # Typedef resolves to a struct — still by value
+        # Typedef resolves to a struct/union — still by value
         if ty.get("canonical_kind") == "record":
-            struct_name = c2l(ty.get("canonical_name") or td_name)
-            return f"(:struct {struct_name})"
+            raw_name = ty.get("canonical_name") or td_name
+            struct_name = c2l(raw_name)
+            kw = "union" if raw_name in UNION_NAMES else "struct"
+            return f"(:{kw} {struct_name})"
         # Resolve through the typedef map first
         if td_name in tdmap:
             return type_to_cffi(tdmap[td_name], tdmap, depth + 1)
@@ -130,7 +157,8 @@ def type_to_ecl(ty: dict, tdmap: dict, depth: int = 0) -> str:
         return ":pointer"
 
     if kind == "record":
-        return f"(:struct {c2l(ty['name'])})"
+        kw = "union" if ty["name"] in UNION_NAMES else "struct"
+        return f"(:{kw} {c2l(ty['name'])})"
 
     if kind == "enum":
         return ":int"
@@ -138,8 +166,10 @@ def type_to_ecl(ty: dict, tdmap: dict, depth: int = 0) -> str:
     if kind == "typedef":
         td_name = ty["name"]
         if ty.get("canonical_kind") == "record":
-            struct_name = c2l(ty.get("canonical_name") or td_name)
-            return f"(:struct {struct_name})"
+            raw_name = ty.get("canonical_name") or td_name
+            struct_name = c2l(raw_name)
+            kw = "union" if raw_name in UNION_NAMES else "struct"
+            return f"(:{kw} {struct_name})"
         if td_name in tdmap:
             return type_to_ecl(tdmap[td_name], tdmap, depth + 1)
         if "canonical" in ty:
@@ -176,7 +206,8 @@ def c_type_str(ty: dict, tdmap: dict) -> str:
         return f"{inner}*{const_suffix}"
     if kind == "record":
         prefix = "const " if is_const else ""
-        return f"{prefix}struct {ty['name']}"
+        kw = "union" if ty["name"] in UNION_NAMES else "struct"
+        return f"{prefix}{kw} {ty['name']}"
     if kind == "enum":
         return f"enum {ty['name']}"
     if kind == "typedef":
@@ -190,9 +221,10 @@ def c_type_str(ty: dict, tdmap: dict) -> str:
 
 
 def struct_type_name(ty: dict) -> str:
-    """Return just the struct/typedef name from a by-value type node."""
+    """Return just the struct/union/typedef name from a by-value type node."""
     if ty.get("kind") == "record":
-        return f"struct {ty['name']}"
+        kw = "union" if ty["name"] in UNION_NAMES else "struct"
+        return f"{kw} {ty['name']}"
     if ty.get("kind") == "typedef":
         if ty.get("canonical_kind") == "record":
             return ty["name"]
@@ -316,7 +348,7 @@ def gen_functions(api: dict) -> str:
             ret_cffi = ":void" if sbv_return else type_to_cffi(fn["return_type"], tdmap)
             lines.append(f'(cffi:defcfun ("{shim_c_name}" {lisp_name}) {ret_cffi}')
             for i, p in enumerate(fn["params"]):
-                pname = c2l(p["name"]) or f"arg{i}"
+                pname = safe_param_name(p["name"]) if p["name"] else f"arg{i}"
                 ptype = ":pointer" if i in sbv_params else type_to_cffi(p["type"], tdmap)
                 lines.append(f"  ({pname} {ptype})")
             if sbv_return:
@@ -326,7 +358,7 @@ def gen_functions(api: dict) -> str:
             ret_cffi = type_to_cffi(fn["return_type"], tdmap)
             lines.append(f'(cffi:defcfun ("{name}" {lisp_name}) {ret_cffi}')
             for p in fn["params"]:
-                pname = c2l(p["name"]) or "arg"
+                pname = safe_param_name(p["name"]) if p["name"] else "arg"
                 ptype = type_to_cffi(p["type"], tdmap)
                 lines.append(f"  ({pname} {ptype})")
             lines.append(")")
@@ -336,7 +368,7 @@ def gen_functions(api: dict) -> str:
         lines.append(f'(ffi:def-function ("{name}" {lisp_name})')
         lines.append("    (")
         for i, p in enumerate(fn["params"]):
-            pname = c2l(p["name"]) or f"arg{i}"
+            pname = safe_param_name(p["name"]) if p["name"] else f"arg{i}"
             ptype = type_to_ecl(p["type"], tdmap)
             lines.append(f"     ({pname} {ptype})")
         lines.append("    )")
@@ -479,6 +511,9 @@ def main():
         sys.exit(f"File not found: {api_path}")
 
     api = json.loads(api_path.read_text())
+
+    global UNION_NAMES
+    UNION_NAMES = {s["name"] for s in api["structs"] if "union" in s.get("kind", "")}
 
     (root / "c").mkdir(exist_ok=True)
 

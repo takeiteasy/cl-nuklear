@@ -109,7 +109,7 @@
 (ffi:def-function ("nk_set_user_data" nk-set-user-data)
     (
      (arg0 :pointer)
-     (handle (:struct nk-handle))
+     (handle (:union nk-handle))
     )
 )
 
@@ -6196,7 +6196,7 @@
     (
      (arg0 :pointer)
     )
-  :returning (:struct nk-handle)
+  :returning (:union nk-handle)
 )
 
 ; nk_handle_id
@@ -6211,7 +6211,7 @@
     (
      (arg0 :int)
     )
-  :returning (:struct nk-handle)
+  :returning (:union nk-handle)
 )
 
 ; nk_image_handle
@@ -6224,7 +6224,7 @@
 #+ecl
 (ffi:def-function ("nk_image_handle" nk-image-handle)
     (
-     (arg0 (:struct nk-handle))
+     (arg0 (:union nk-handle))
     )
   :returning (:struct nk-image)
 )
@@ -6327,7 +6327,7 @@
 #+ecl
 (ffi:def-function ("nk_subimage_handle" nk-subimage-handle)
     (
-     (arg0 (:struct nk-handle))
+     (arg0 (:union nk-handle))
      (w :unsigned-short)
      (h :unsigned-short)
      (sub-region (:struct nk-rect))
@@ -6341,7 +6341,7 @@
 (cffi:defcfun ("cl_nk_nine_slice_handle" nk-nine-slice-handle) :void
   (arg0 :pointer)
   (l :unsigned-short)
-  (t :unsigned-short)
+  (t-arg :unsigned-short)
   (r :unsigned-short)
   (b :unsigned-short)
   (result-out :pointer)  ; caller allocates; filled with return value
@@ -6349,9 +6349,9 @@
 #+ecl
 (ffi:def-function ("nk_nine_slice_handle" nk-nine-slice-handle)
     (
-     (arg0 (:struct nk-handle))
+     (arg0 (:union nk-handle))
      (l :unsigned-short)
-     (t :unsigned-short)
+     (t-arg :unsigned-short)
      (r :unsigned-short)
      (b :unsigned-short)
     )
@@ -6364,7 +6364,7 @@
 (cffi:defcfun ("cl_nk_nine_slice_ptr" nk-nine-slice-ptr) :void
   (arg0 :pointer)
   (l :unsigned-short)
-  (t :unsigned-short)
+  (t-arg :unsigned-short)
   (r :unsigned-short)
   (b :unsigned-short)
   (result-out :pointer)  ; caller allocates; filled with return value
@@ -6374,7 +6374,7 @@
     (
      (arg0 :pointer)
      (l :unsigned-short)
-     (t :unsigned-short)
+     (t-arg :unsigned-short)
      (r :unsigned-short)
      (b :unsigned-short)
     )
@@ -6387,7 +6387,7 @@
 (cffi:defcfun ("cl_nk_nine_slice_id" nk-nine-slice-id) :void
   (arg0 :int)
   (l :unsigned-short)
-  (t :unsigned-short)
+  (t-arg :unsigned-short)
   (r :unsigned-short)
   (b :unsigned-short)
   (result-out :pointer)  ; caller allocates; filled with return value
@@ -6397,7 +6397,7 @@
     (
      (arg0 :int)
      (l :unsigned-short)
-     (t :unsigned-short)
+     (t-arg :unsigned-short)
      (r :unsigned-short)
      (b :unsigned-short)
     )
@@ -6426,7 +6426,7 @@
   (h :unsigned-short)
   (sub-region :pointer)
   (l :unsigned-short)
-  (t :unsigned-short)
+  (t-arg :unsigned-short)
   (r :unsigned-short)
   (b :unsigned-short)
   (result-out :pointer)  ; caller allocates; filled with return value
@@ -6439,7 +6439,7 @@
      (h :unsigned-short)
      (sub-region (:struct nk-rect))
      (l :unsigned-short)
-     (t :unsigned-short)
+     (t-arg :unsigned-short)
      (r :unsigned-short)
      (b :unsigned-short)
     )
@@ -6455,7 +6455,7 @@
   (h :unsigned-short)
   (sub-region :pointer)
   (l :unsigned-short)
-  (t :unsigned-short)
+  (t-arg :unsigned-short)
   (r :unsigned-short)
   (b :unsigned-short)
   (result-out :pointer)  ; caller allocates; filled with return value
@@ -6468,7 +6468,7 @@
      (h :unsigned-short)
      (sub-region (:struct nk-rect))
      (l :unsigned-short)
-     (t :unsigned-short)
+     (t-arg :unsigned-short)
      (r :unsigned-short)
      (b :unsigned-short)
     )
@@ -6484,7 +6484,7 @@
   (h :unsigned-short)
   (sub-region :pointer)
   (l :unsigned-short)
-  (t :unsigned-short)
+  (t-arg :unsigned-short)
   (r :unsigned-short)
   (b :unsigned-short)
   (result-out :pointer)  ; caller allocates; filled with return value
@@ -6492,12 +6492,12 @@
 #+ecl
 (ffi:def-function ("nk_sub9slice_handle" nk-sub9slice-handle)
     (
-     (arg0 (:struct nk-handle))
+     (arg0 (:union nk-handle))
      (w :unsigned-short)
      (h :unsigned-short)
      (sub-region (:struct nk-rect))
      (l :unsigned-short)
-     (t :unsigned-short)
+     (t-arg :unsigned-short)
      (r :unsigned-short)
      (b :unsigned-short)
     )
@@ -7205,7 +7205,7 @@
 (ffi:def-function ("nk_font_atlas_end" nk-font-atlas-end)
     (
      (arg0 :pointer)
-     (tex (:struct nk-handle))
+     (tex (:union nk-handle))
      (arg2 :pointer)
     )
 )
@@ -8613,7 +8613,7 @@
      (arg0 :pointer)
      (arg1 (:struct nk-rect))
      (arg2 :pointer)
-     (usr (:struct nk-handle))
+     (usr (:union nk-handle))
     )
 )
 
@@ -9501,7 +9501,7 @@
 (ffi:def-function ("nk_draw_list_push_userdata" nk-draw-list-push-userdata)
     (
      (arg0 :pointer)
-     (userdata (:struct nk-handle))
+     (userdata (:union nk-handle))
     )
 )
 

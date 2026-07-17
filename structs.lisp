@@ -105,14 +105,14 @@
 ; nk_image
 #-ecl
 (cffi:defcstruct nk-image
-  (handle (:struct nk-handle))
+  (handle (:union nk-handle))
   (w :unsigned-short)
   (h :unsigned-short)
   (region (:array :unsigned-short 4))
 )
 #+ecl
 (ffi:def-c-struct nk-image
-    (handle (:struct nk-handle))
+    (handle (:union nk-handle))
     (w :unsigned-short)
     (h :unsigned-short)
     (region :pointer)
@@ -165,13 +165,13 @@
 ; nk_allocator
 #-ecl
 (cffi:defcstruct nk-allocator
-  (userdata (:struct nk-handle))
+  (userdata (:union nk-handle))
   (alloc :pointer)
   (free :pointer)
 )
 #+ecl
 (ffi:def-c-struct nk-allocator
-    (userdata (:struct nk-handle))
+    (userdata (:union nk-handle))
     (alloc :pointer)
     (free :pointer)
 )
@@ -179,12 +179,12 @@
 ; nk_draw_null_texture
 #-ecl
 (cffi:defcstruct nk-draw-null-texture
-  (texture (:struct nk-handle))
+  (texture (:union nk-handle))
   (uv (:struct nk-vec2))
 )
 #+ecl
 (ffi:def-c-struct nk-draw-null-texture
-    (texture (:struct nk-handle))
+    (texture (:union nk-handle))
     (uv (:struct nk-vec2))
 )
 
@@ -259,19 +259,19 @@
 ; nk_user_font
 #-ecl
 (cffi:defcstruct nk-user-font
-  (userdata (:struct nk-handle))
+  (userdata (:union nk-handle))
   (height :float)
   (width :pointer)
   (query :pointer)
-  (texture (:struct nk-handle))
+  (texture (:union nk-handle))
 )
 #+ecl
 (ffi:def-c-struct nk-user-font
-    (userdata (:struct nk-handle))
+    (userdata (:union nk-handle))
     (height :float)
     (width :pointer)
     (query :pointer)
-    (texture (:struct nk-handle))
+    (texture (:union nk-handle))
 )
 
 ; nk_baked_font
@@ -378,7 +378,7 @@
   (glyphs :pointer)
   (fallback :pointer)
   (fallback-codepoint :unsigned-int)
-  (texture (:struct nk-handle))
+  (texture (:union nk-handle))
   (config :pointer)
 )
 #+ecl
@@ -390,7 +390,7 @@
     (glyphs :pointer)
     (fallback :pointer)
     (fallback-codepoint :unsigned-int)
-    (texture (:struct nk-handle))
+    (texture (:union nk-handle))
     (config :pointer)
 )
 
@@ -513,13 +513,13 @@
 ; nk_clipboard
 #-ecl
 (cffi:defcstruct nk-clipboard
-  (userdata (:struct nk-handle))
+  (userdata (:union nk-handle))
   (paste :pointer)
   (copy :pointer)
 )
 #+ecl
 (ffi:def-c-struct nk-clipboard
-    (userdata (:struct nk-handle))
+    (userdata (:union nk-handle))
     (paste :pointer)
     (copy :pointer)
 )
@@ -605,13 +605,13 @@
 (cffi:defcstruct nk-command
   (type nk-command-type)
   (next :unsigned-long)
-  (userdata (:struct nk-handle))
+  (userdata (:union nk-handle))
 )
 #+ecl
 (ffi:def-c-struct nk-command
     (type :int)
     (next :unsigned-long)
-    (userdata (:struct nk-handle))
+    (userdata (:union nk-handle))
 )
 
 ; nk_command_scissor
@@ -946,7 +946,7 @@
   (y :short)
   (w :unsigned-short)
   (h :unsigned-short)
-  (callback-data (:struct nk-handle))
+  (callback-data (:union nk-handle))
   (callback :pointer)
 )
 #+ecl
@@ -956,7 +956,7 @@
     (y :short)
     (w :unsigned-short)
     (h :unsigned-short)
-    (callback-data (:struct nk-handle))
+    (callback-data (:union nk-handle))
     (callback :pointer)
 )
 
@@ -996,7 +996,7 @@
   (base :pointer)
   (clip (:struct nk-rect))
   (use-clipping :int)
-  (userdata (:struct nk-handle))
+  (userdata (:union nk-handle))
   (begin :unsigned-long)
   (end :unsigned-long)
   (last :unsigned-long)
@@ -1006,7 +1006,7 @@
     (base :pointer)
     (clip (:struct nk-rect))
     (use-clipping :int)
-    (userdata (:struct nk-handle))
+    (userdata (:union nk-handle))
     (begin :unsigned-long)
     (end :unsigned-long)
     (last :unsigned-long)
@@ -1107,15 +1107,15 @@
 (cffi:defcstruct nk-draw-command
   (elem-count :unsigned-int)
   (clip-rect (:struct nk-rect))
-  (texture (:struct nk-handle))
-  (userdata (:struct nk-handle))
+  (texture (:union nk-handle))
+  (userdata (:union nk-handle))
 )
 #+ecl
 (ffi:def-c-struct nk-draw-command
     (elem-count :unsigned-int)
     (clip-rect (:struct nk-rect))
-    (texture (:struct nk-handle))
-    (userdata (:struct nk-handle))
+    (texture (:union nk-handle))
+    (userdata (:union nk-handle))
 )
 
 ; nk_draw_list
@@ -1135,7 +1135,7 @@
   (path-offset :unsigned-int)
   (line-AA nk-anti-aliasing)
   (shape-AA nk-anti-aliasing)
-  (userdata (:struct nk-handle))
+  (userdata (:union nk-handle))
 )
 #+ecl
 (ffi:def-c-struct nk-draw-list
@@ -1153,7 +1153,7 @@
     (path-offset :unsigned-int)
     (line-AA :int)
     (shape-AA :int)
-    (userdata (:struct nk-handle))
+    (userdata (:union nk-handle))
 )
 
 ; nk_style_item_data
@@ -1174,12 +1174,12 @@
 #-ecl
 (cffi:defcstruct nk-style-item
   (type nk-style-item-type)
-  (data (:struct nk-style-item-data))
+  (data (:union nk-style-item-data))
 )
 #+ecl
 (ffi:def-c-struct nk-style-item
     (type :int)
-    (data (:struct nk-style-item-data))
+    (data (:union nk-style-item-data))
 )
 
 ; nk_style_text
@@ -1218,7 +1218,7 @@
   (image-padding (:struct nk-vec2))
   (touch-padding (:struct nk-vec2))
   (disabled-factor :float)
-  (userdata (:struct nk-handle))
+  (userdata (:union nk-handle))
   (draw-begin :pointer)
   (draw-end :pointer)
 )
@@ -1241,7 +1241,7 @@
     (image-padding (:struct nk-vec2))
     (touch-padding (:struct nk-vec2))
     (disabled-factor :float)
-    (userdata (:struct nk-handle))
+    (userdata (:union nk-handle))
     (draw-begin :pointer)
     (draw-end :pointer)
 )
@@ -1266,7 +1266,7 @@
   (border :float)
   (color-factor :float)
   (disabled-factor :float)
-  (userdata (:struct nk-handle))
+  (userdata (:union nk-handle))
   (draw-begin :pointer)
   (draw-end :pointer)
 )
@@ -1289,7 +1289,7 @@
     (border :float)
     (color-factor :float)
     (disabled-factor :float)
-    (userdata (:struct nk-handle))
+    (userdata (:union nk-handle))
     (draw-begin :pointer)
     (draw-end :pointer)
 )
@@ -1317,7 +1317,7 @@
   (image-padding (:struct nk-vec2))
   (color-factor :float)
   (disabled-factor :float)
-  (userdata (:struct nk-handle))
+  (userdata (:union nk-handle))
   (draw-begin :pointer)
   (draw-end :pointer)
 )
@@ -1343,7 +1343,7 @@
     (image-padding (:struct nk-vec2))
     (color-factor :float)
     (disabled-factor :float)
-    (userdata (:struct nk-handle))
+    (userdata (:union nk-handle))
     (draw-begin :pointer)
     (draw-end :pointer)
 )
@@ -1375,7 +1375,7 @@
   (dec-button (:struct nk-style-button))
   (inc-symbol nk-symbol-type)
   (dec-symbol nk-symbol-type)
-  (userdata (:struct nk-handle))
+  (userdata (:union nk-handle))
   (draw-begin :pointer)
   (draw-end :pointer)
 )
@@ -1405,7 +1405,7 @@
     (dec-button (:struct nk-style-button))
     (inc-symbol :int)
     (dec-symbol :int)
-    (userdata (:struct nk-handle))
+    (userdata (:union nk-handle))
     (draw-begin :pointer)
     (draw-end :pointer)
 )
@@ -1431,7 +1431,7 @@
   (cursor-width :float)
   (color-factor :float)
   (disabled-factor :float)
-  (userdata (:struct nk-handle))
+  (userdata (:union nk-handle))
   (draw-begin :pointer)
   (draw-end :pointer)
 )
@@ -1455,7 +1455,7 @@
     (cursor-width :float)
     (color-factor :float)
     (disabled-factor :float)
-    (userdata (:struct nk-handle))
+    (userdata (:union nk-handle))
     (draw-begin :pointer)
     (draw-end :pointer)
 )
@@ -1478,7 +1478,7 @@
   (padding (:struct nk-vec2))
   (color-factor :float)
   (disabled-factor :float)
-  (userdata (:struct nk-handle))
+  (userdata (:union nk-handle))
   (draw-begin :pointer)
   (draw-end :pointer)
 )
@@ -1499,7 +1499,7 @@
     (padding (:struct nk-vec2))
     (color-factor :float)
     (disabled-factor :float)
-    (userdata (:struct nk-handle))
+    (userdata (:union nk-handle))
     (draw-begin :pointer)
     (draw-end :pointer)
 )
@@ -1527,7 +1527,7 @@
   (dec-button (:struct nk-style-button))
   (inc-symbol nk-symbol-type)
   (dec-symbol nk-symbol-type)
-  (userdata (:struct nk-handle))
+  (userdata (:union nk-handle))
   (draw-begin :pointer)
   (draw-end :pointer)
 )
@@ -1553,7 +1553,7 @@
     (dec-button (:struct nk-style-button))
     (inc-symbol :int)
     (dec-symbol :int)
-    (userdata (:struct nk-handle))
+    (userdata (:union nk-handle))
     (draw-begin :pointer)
     (draw-end :pointer)
 )
@@ -1634,7 +1634,7 @@
   (edit (:struct nk-style-edit))
   (inc-button (:struct nk-style-button))
   (dec-button (:struct nk-style-button))
-  (userdata (:struct nk-handle))
+  (userdata (:union nk-handle))
   (draw-begin :pointer)
   (draw-end :pointer)
 )
@@ -1657,7 +1657,7 @@
     (edit (:struct nk-style-edit))
     (inc-button (:struct nk-style-button))
     (dec-button (:struct nk-style-button))
-    (userdata (:struct nk-handle))
+    (userdata (:union nk-handle))
     (draw-begin :pointer)
     (draw-end :pointer)
 )
@@ -2477,13 +2477,13 @@
 ; nk_page_element
 #-ecl
 (cffi:defcstruct nk-page-element
-  (data (:struct nk-page-data))
+  (data (:union nk-page-data))
   (next :pointer)
   (prev :pointer)
 )
 #+ecl
 (ffi:def-c-struct nk-page-element
-    (data (:struct nk-page-data))
+    (data (:union nk-page-data))
     (next :pointer)
     (prev :pointer)
 )
@@ -2538,7 +2538,7 @@
   (stacks (:struct nk-configuration-stacks))
   (delta-time-seconds :float)
   (draw-list (:struct nk-draw-list))
-  (userdata (:struct nk-handle))
+  (userdata (:union nk-handle))
   (text-edit (:struct nk-text-edit))
   (overlay (:struct nk-command-buffer))
   (build :int)
@@ -2563,7 +2563,7 @@
     (stacks (:struct nk-configuration-stacks))
     (delta-time-seconds :float)
     (draw-list (:struct nk-draw-list))
-    (userdata (:struct nk-handle))
+    (userdata (:union nk-handle))
     (text-edit (:struct nk-text-edit))
     (overlay (:struct nk-command-buffer))
     (build :int)

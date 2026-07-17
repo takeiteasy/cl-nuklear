@@ -26,26 +26,34 @@ the atlas memory is cleaned up. The renderer's MAKE-NUKLEAR-RENDERER handles thi
         (w (gensym "W"))
         (h (gensym "H"))
         (pixels (gensym "PIXELS")))
+    ;; CTX-VAR is heap-allocated (not stack-allocated via WITH-FOREIGN-OBJECTS)
+    ;; because nk_context is ~18KB; SBCL's CFFI forces large foreign objects
+    ;; onto the C stack when stack-allocated, which segfaults for a struct
+    ;; this size. FONT-ATLAS-VAR (400 bytes) is small enough for the stack.
     #-ecl
-    `(cffi:with-foreign-objects ((,ctx-var '(:struct nk-context))
-                                 (,font-atlas-var '(:struct nk-font-atlas))
-                                 (,w :int)
-                                 (,h :int))
-       (nk-font-atlas-init-default ,font-atlas-var)
-       (nk-font-atlas-begin ,font-atlas-var)
-       (let* ((,font (nk-font-atlas-add-default ,font-atlas-var ,font-size (cffi:null-pointer)))
-              (,pixels (nk-font-atlas-bake ,font-atlas-var ,w ,h :nk-font-atlas-rgba32)))
-         (declare (ignorable ,pixels))
-         (let ((*atlas-pixels* ,pixels)
-               (*atlas-width*  (cffi:mem-ref ,w :int))
-               (*atlas-height* (cffi:mem-ref ,h :int)))
-           (declare (special *atlas-pixels* *atlas-width* *atlas-height*))
-           (unwind-protect
-               (progn ,@body)
-             (nk-font-atlas-cleanup ,font-atlas-var)
-             (nk-free ,ctx-var)))
-         (let ((handle-ptr (cffi:foreign-slot-pointer ,font '(:struct nk-font) 'handle)))
-           (nk-init-default ,ctx-var handle-ptr))))
+    `(let ((,ctx-var (cffi:foreign-alloc '(:struct nk-context))))
+       (unwind-protect
+           (cffi:with-foreign-objects ((,font-atlas-var '(:struct nk-font-atlas))
+                                       (,w :int)
+                                       (,h :int))
+             (nk-font-atlas-init-default ,font-atlas-var)
+             (nk-font-atlas-begin ,font-atlas-var)
+             (let* ((,font (nk-font-atlas-add-default ,font-atlas-var ,font-size (cffi:null-pointer)))
+                    (,pixels (nk-font-atlas-bake ,font-atlas-var ,w ,h :nk-font-atlas-rgba32)))
+               (declare (ignorable ,pixels))
+               (let ((*atlas-pixels* ,pixels)
+                     (*atlas-width*  (cffi:mem-ref ,w :int))
+                     (*atlas-height* (cffi:mem-ref ,h :int)))
+                 (declare (special *atlas-pixels* *atlas-width* *atlas-height*))
+                 ;; NK-INIT-DEFAULT must run before BODY -- it's what makes
+                 ;; CTX-VAR a valid, initialized nuklear context for BODY to use.
+                 (let ((handle-ptr (cffi:foreign-slot-pointer ,font '(:struct nk-font) 'handle)))
+                   (nk-init-default ,ctx-var handle-ptr))
+                 (unwind-protect
+                     (progn ,@body)
+                   (nk-font-atlas-cleanup ,font-atlas-var)
+                   (nk-free ,ctx-var)))))
+         (cffi:foreign-free ,ctx-var)))
     #+ecl
     `(let* ((,ctx-var (ffi:allocate-foreign-object '(:struct nk-context)))
             (,font-atlas-var (ffi:allocate-foreign-object '(:struct nk-font-atlas)))
@@ -63,11 +71,13 @@ the atlas memory is cleaned up. The renderer's MAKE-NUKLEAR-RENDERER handles thi
                       (*atlas-width*  (ffi:deref-pointer ,w :int))
                       (*atlas-height* (ffi:deref-pointer ,h :int)))
                   (declare (special *atlas-pixels* *atlas-width* *atlas-height*))
+                  ;; NK-INIT-DEFAULT must run before BODY -- it's what makes
+                  ;; CTX-VAR a valid, initialized nuklear context for BODY to use.
+                  (nk-init-default ,ctx-var ,font)
                   (unwind-protect
                       (progn ,@body)
                     (nk-font-atlas-cleanup ,font-atlas-var)
-                    (nk-free ,ctx-var)))
-                (nk-init-default ,ctx-var ,font)))
+                    (nk-free ,ctx-var)))))
          (ffi:deallocate-foreign-object ,ctx-var)
          (ffi:deallocate-foreign-object ,font-atlas-var)
          (ffi:deallocate-foreign-object ,w)
